@@ -288,7 +288,18 @@ class LSTM(object):
         # TODO: Implement the forward pass for a single timestep of an LSTM.        #
         # You may want to use the numerically stable sigmoid implementation above.  #
         #############################################################################
-        pass
+        # Xt: (N, D); Wx: (D, 4H); Wh: (H, 4H); prev_h: (N, H); A = Xt*Wx + Ht-1*Wh + b : (N, 4H)
+        A = np.dot(x, self.params[self.wx_name]) + np.dot(prev_h, self.params[self.wh_name]) + self.params[self.b_name]
+        H = self.h_dim
+        [a_i, a_f, a_o, a_g] = [A[:, (i*H):((i+1)*H)] for i in range(4)]
+        i, f, o, g = sigmoid(a_i), sigmoid(a_f), sigmoid(a_o), np.tanh(a_g)
+        
+        # ct = f * ct-1 + i * g while *=element-wise product
+        next_c = np.multiply(f, prev_c) + np.multiply(i, g)
+        # ht = o * tanh(ct) while *=element-wise product
+        next_h = np.multiply(o, np.tanh(next_c))
+        
+        meta = [x, prev_h, prev_c, i, f, o, g, next_c, next_h]        
         #############################################################################
         #                               END OF YOUR CODE                            #
         #############################################################################
@@ -296,7 +307,7 @@ class LSTM(object):
         
     def step_backward(self, dnext_h, dnext_c, meta):
         """
-        dnext_h: gradient w.r.t. next hidden state
+        dnext_h: gradient w.r.t. next hidden state, (N, H)
         meta: variables needed for the backward pass
 
         dx: gradients of input feature (N, D)
@@ -312,7 +323,44 @@ class LSTM(object):
         # HINT: For sigmoid and tanh you can compute local derivatives in terms of  #
         # the output value from the nonlinearity.                                   #
         #############################################################################
-        pass
+        # Reference: http://arunmallya.github.io/writeups/nn/lstm/index.html#/8
+        x, prev_h, prev_c, i, f, o, g, next_c, next_h = meta
+        
+        # do, dc
+        do = dnext_h * np.tanh(next_c)
+        dtanh_c = dnext_h * o
+        
+        dc = dnext_c
+        dc += dtanh_c * (1 - np.tanh(next_c) ** 2)
+        
+        # df, di, dg, dprev_c
+        di = dc * g
+        df = dc * prev_c
+        dprev_c = dc * f
+        dg = dc * i
+        
+        # d_af, d_ai, d_ag, d_ao, dA
+        d_af = df * f * (1 - f)
+        d_ai = di * i * (1 - i)
+        d_ao = do * o * (1 - o)
+        d_ag = dg * (1 - g ** 2)
+        
+        N, H = dnext_h.shape
+        # print ("N, H is {}, {}".format(N, H))
+        # print ("dai, daf, dao, dag shape is {}, {}, {}, {}".format(d_ai.shape, d_af.shape, d_ao.shape, d_ag.shape))
+        dA = np.zeros((N, 4 * H))
+        dA[:, 0:H] += d_ai
+        dA[:, H:2*H] += d_af
+        dA[:, 2*H:3*H] += d_ao
+        dA[:, 3*H:4*H] += d_ag
+        
+        # dWh, dWx, dx, db, dh
+        # Xt: (N, D); Wx: (D, 4H); Wh: (H, 4H); prev_h: (N, H); A = Xt*Wx + Ht-1*Wh + b : (N, 4H)
+        dWh = np.dot(prev_h.T, dA)
+        dWx = np.dot(x.T, dA)
+        dx = np.dot(dA, self.params[self.wx_name].T)
+        dprev_h = np.dot(dA, self.params[self.wh_name].T)
+        db = np.sum(dA, axis=0)
         #############################################################################
         #                               END OF YOUR CODE                            #
         #############################################################################
@@ -422,7 +470,8 @@ class word_embedding(object):
         #                                                                            #
         # HINT: This can be done in one line using NumPy's array indexing.           #
         ##############################################################################
-        pass
+        out = self.params[self.w_name][x, :]
+        self.meta = [out, x]        
         ##############################################################################
         #                               END OF YOUR CODE                             #
         ##############################################################################
@@ -449,7 +498,9 @@ class word_embedding(object):
         # Note that Words can appear more than once in a sequence.                   #
         # HINT: Look up the function np.add.at                                       #
         ##############################################################################
-        pass
+        out, x = self.meta
+        self.grads[self.w_name] = np.zeros(self.params[self.w_name].shape)
+        np.add.at(self.grads[self.w_name], x, dout)
         ##############################################################################
         #                               END OF YOUR CODE                             #
         ##############################################################################

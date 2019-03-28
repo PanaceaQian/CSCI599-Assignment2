@@ -9,7 +9,8 @@ class TestRNN(object):
         self.grads = {}
     
         ########## TODO: ##########
-        pass
+        if cell_type == 'rnn':
+            self.rnn = VanillaRNN(input_dim, hidden_dim)
         ########### END ###########
         
         self.gather_params()
