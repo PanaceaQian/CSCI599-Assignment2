@@ -395,7 +395,17 @@ class LSTM(object):
         # TODO: Implement the forward pass for an LSTM over an entire timeseries.   #
         # You should use the lstm_step_forward function that you just defined.      #
         #############################################################################
-        pass
+        (N, T, D), H = x.shape, self.h_dim
+        h = np.zeros((N, T, H)) # h: initial hidden states(N, T, H)
+        c = np.zeros((N, T, H))
+        c0 = np.zeros(h0.shape)
+        
+        for t in range(T):
+            if t == 0:
+                h[:, t, :], c[:, t, :], meta_t = self.step_forward(x[:, t, :], h0, c0)
+            else:
+                h[:, t, :], c[:, t, :], meta_t = self.step_forward(x[:, t, :], h[:, t-1, :], c[:, t-1, :])
+            self.meta.append(meta_t)
         #############################################################################
         #                               END OF YOUR CODE                            #
         #############################################################################
@@ -421,7 +431,30 @@ class LSTM(object):
         # TODO: Implement the backward pass for an LSTM over an entire timeseries.  #
         # You should use the lstm_step_backward function that you just defined.     #
         #############################################################################
-        pass
+        (N, T, H), D = dh.shape, self.input_dim
+        
+        dx = np.zeros((N, T, D))
+        dc = np.zeros(dh.shape)
+        self.grads[self.wx_name] = np.zeros((D, 4*H)) 
+        self.grads[self.wh_name] = np.zeros((H, 4*H))
+        self.grads[self.b_name] = np.zeros((4*H, ))
+        
+        dnext_h = dh[:, T-1, :]
+        dnext_c = dc[:, T-1, :]
+        
+        for t in range(T-1, -1, -1):            
+            dx_i, dprev_h_i, dprev_c_i, dWx_i, dWh_i, db_i = self.step_backward(dnext_h, dnext_c, self.meta[t])
+            dx[:, t, :] = dx_i
+            
+            if t == 0:
+                dh0 = dprev_h_i
+            else:
+                dnext_h = dprev_h_i + dh[:, t-1, :]
+                dnext_c = dprev_c_i + dc[:, t-1, :]
+            
+            self.grads[self.wx_name] += dWx_i
+            self.grads[self.wh_name] += dWh_i
+            self.grads[self.b_name] += db_i
         #############################################################################
         #                               END OF YOUR CODE                            #
         #############################################################################
