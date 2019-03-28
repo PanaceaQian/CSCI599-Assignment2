@@ -132,7 +132,9 @@ class VanillaRNN(object):
         # Store the results in the variable output provided above as well as       #
         # values needed for the backward pass.                                     #
         ############################################################################
-        pass
+        # h(t) = tanh(U * x + W * h(t-1) + b)
+        next_h = np.tanh(np.dot(x, self.params[self.wx_name]) + np.dot(prev_h, self.params[self.wh_name]) + self.params[self.b_name])
+        meta = [x, prev_h, next_h]
         #############################################################################
         #                             END OF YOUR CODE                              #
         #############################################################################
@@ -145,8 +147,8 @@ class VanillaRNN(object):
 
         dx: gradients of input feature (N, D)
         dprev_h: gradients of previous hiddel state (N, H)
-        dWh: gradients w.r.t. feature-to-hidden weights (D, H)
-        dWx: gradients w.r.t. hidden-to-hidden weights (H, H)
+        dWh: gradients w.r.t. feature-to-hidden weights (H, H)
+        dWx: gradients w.r.t. hidden-to-hidden weights (D, H)
         db: gradients w.r.t bias (H,)
         """
         dx, dprev_h, dWx, dWh, db = None, None, None, None, None
@@ -155,7 +157,16 @@ class VanillaRNN(object):
         # Store the computed gradients for current layer in self.grads with         #
         # corresponding name.                                                       # 
         #############################################################################
-        pass
+        x, prev_h, next_h = meta
+        dtanh = dnext_h * (1 - next_h ** 2) # (N, H)
+        
+        dx = np.dot(dtanh, self.params[self.wx_name].T) # (N, H)*(H, D) -> (N, D)
+        dWx = np.dot(x.T, dtanh) # (D, N) * (N, H) -> (D, H)
+        
+        dprev_h = np.dot(dtanh, self.params[self.wh_name].T) # (N, H)*(H, H) -> (N, H)
+        dWh = np.dot(prev_h.T, dtanh) # (H, N)*(N, H) -> (H, H)
+        
+        db = np.sum(dtanh, axis=0)
         #############################################################################
         #                             END OF YOUR CODE                              #
         #############################################################################
@@ -173,7 +184,15 @@ class VanillaRNN(object):
         # input data. You should use the step_forward function that you defined      #
         # above. You can use a for loop to help compute the forward pass.            #
         ##############################################################################
-        pass
+        (N, T, D), H = x.shape, self.h_dim
+        h = np.zeros((N, T, H)) # h: initial hidden states(N, T, H)
+        
+        for t in range(T):
+            if t == 0:
+                h[:, t, :], meta_t = self.step_forward(x[:, t, :], h0)
+            else:
+                h[:, t, :], meta_t = self.step_forward(x[:, t, :], h[:, t-1, :])
+            self.meta.append(meta_t)
         ##############################################################################
         #                               END OF YOUR CODE                             #
         ##############################################################################
@@ -199,7 +218,31 @@ class VanillaRNN(object):
         # defined above. You can use a for loop to help compute the backward pass.   #
         # HINT: Gradients of hidden states come from two sources                     #
         ##############################################################################
-        pass
+        (N, T, H), D = dh.shape, self.input_dim
+        
+        dx = np.zeros((N, T, D))
+        self.grads[self.wx_name] = np.zeros((D, H)) 
+        self.grads[self.wh_name] = np.zeros((H, H))
+        self.grads[self.b_name] = np.zeros((H, ))
+        
+        dnext_h = dh[:, T-1, :]
+        
+        # print("N, T, H, D is {}, {}, {}, {}".format(N, T, D, H))
+        # print("meta shape is {}".format(len(self.meta)))
+        
+        for t in range(T-1, -1, -1):            
+            dx_i, dprev_h_i, dWx_i, dWh_i, db_i = self.step_backward(dnext_h, self.meta[t])
+            dx[:, t, :] = dx_i
+            
+            if t == 0:
+                dh0 = dprev_h_i
+            else:
+                dnext_h = dprev_h_i + dh[:, t-1, :]
+            
+            self.grads[self.wx_name] += dWx_i
+            self.grads[self.wh_name] += dWh_i
+            self.grads[self.b_name] += db_i
+            
         ##############################################################################
         #                               END OF YOUR CODE                             #
         ##############################################################################
