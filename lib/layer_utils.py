@@ -330,14 +330,13 @@ class LSTM(object):
         do = dnext_h * np.tanh(next_c)
         dtanh_c = dnext_h * o
         
-        dc = dnext_c
-        dc += dtanh_c * (1 - np.tanh(next_c) ** 2)
+        dnext_c += dtanh_c * (1 - np.tanh(next_c) ** 2)
         
         # df, di, dg, dprev_c
-        di = dc * g
-        df = dc * prev_c
-        dprev_c = dc * f
-        dg = dc * i
+        di = dnext_c * g
+        df = dnext_c * prev_c
+        dprev_c = dnext_c * f
+        dg = dnext_c * i
         
         # d_af, d_ai, d_ag, d_ao, dA
         d_af = df * f * (1 - f)
